@@ -52,13 +52,13 @@ export default function HealthDashboardScreen() {
               <View style={[styles.riskDot, { backgroundColor: getRiskColor() }]} />
               <Text style={styles.riskText}>{healthStatus.riskText}</Text>
             </View>
-            <Text style={styles.riskPercentage}>{healthStatus.riskPercentage}%</Text>
+            <Text style={styles.riskPercentage}>{healthStatus.wellnessIndex}%</Text>
             <View style={styles.riskBar}>
               <View
                 style={[
                   styles.riskBarFill,
                   {
-                    width: `${healthStatus.riskPercentage}%`,
+                    width: `${healthStatus.wellnessIndex}%`,
                     backgroundColor: getRiskColor(),
                   },
                 ]}

@@ -2,8 +2,8 @@ import { HealthStatus, HealthMetric, DailySuggestion, FamilyRisk } from '@/types
 
 export const healthStatus: HealthStatus = {
   riskLevel: 'low',
-  riskPercentage: 12,
-  riskText: 'Rischio Giornaliero: Basso',
+  wellnessIndex: 88,
+  riskText: 'Indice Benessere: Ottimo',
 };
 
 export const healthMetrics: HealthMetric[] = [

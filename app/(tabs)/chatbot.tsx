@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,18 +13,43 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Send } from 'lucide-react-native';
 import ChatMessage from '@/components/ChatMessage';
 import { Message } from '@/types/chat';
+import { runOncoTeam } from '@/services/onco/orchestrator';
+
+
 
 export default function ChatbotScreen() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       sender: 'ai',
-      text: 'Ciao! Sono il tuo assistente HealthFlow AI. Posso aiutarti con informazioni sulla tua salute, suggerimenti per visite mediche e rispondere alle tue domande.',
+      text: 'Ciao! Sono il tuo assistente Onco-Team. Come posso aiutarti oggi?',
       timestamp: new Date(),
     },
   ]);
   const [inputText, setInputText] = useState('');
+  const [trafficLight, setTrafficLight] = useState<string>('UNKNOWN');
   const flatListRef = useRef<FlatList>(null);
+
+  // Initial Profile Check
+  useEffect(() => {
+    const initChat = async () => {
+      // Send a hidden system message to trigger the profile check logic in the orchestrator
+      const response = await runOncoTeam('user-123', '__PROFILE_CHECK__');
+
+      // If the response is not empty (meaning the orchestrator intercepted it), show it
+      if (response.text) {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          sender: 'ai',
+          text: response.text,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, aiMessage]);
+        setTrafficLight(response.traffic_light);
+      }
+    };
+    initChat();
+  }, []);
 
   const handleSend = async () => {
     if (inputText.trim() === '') return;
@@ -43,39 +68,35 @@ export default function ChatbotScreen() {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
 
-    const aiResponse = await sendMessage(userMessage.text);
+    // Call Onco-Team Orchestrator
+    const response = await runOncoTeam('user-123', userMessage.text);
 
     const aiMessage: Message = {
       id: (Date.now() + 1).toString(),
       sender: 'ai',
-      text: aiResponse,
+      text: response.text,
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, aiMessage]);
+    setTrafficLight(response.traffic_light);
 
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
   };
 
-  const sendMessage = async (message: string): Promise<string> => {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    const responses = [
-      'Grazie per la tua domanda. In base ai tuoi dati, ti consiglio di consultare il tuo medico per maggiori informazioni.',
-      'Ho analizzato i tuoi parametri di salute. Tutto sembra nella norma, ma ricorda di mantenerti attivo e idratato.',
-      'Interessante! Posso suggerirti alcuni screening preventivi in base alla tua età e storia familiare.',
-      'Ti consiglio di monitorare questo aspetto. Vuoi che ti mostri i suggerimenti per visite specialistiche?',
-    ];
-
-    return responses[Math.floor(Math.random() * responses.length)];
-  };
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Assistente HealthFlow AI</Text>
+        <Text style={styles.headerTitle}>Assistente Onco-Team</Text>
+        <View style={{
+          width: 12,
+          height: 12,
+          borderRadius: 6,
+          backgroundColor: trafficLight === 'RED' ? '#FF3B30' : trafficLight === 'YELLOW' ? '#FFCC00' : trafficLight === 'GREEN' ? '#34C759' : '#C7C7CC',
+          marginLeft: 8
+        }} />
       </View>
 
       <KeyboardAvoidingView
@@ -121,6 +142,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8F8F8',
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#FFFFFF',
     paddingVertical: 16,
     paddingHorizontal: 20,

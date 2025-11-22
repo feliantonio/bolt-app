@@ -2,7 +2,7 @@ export type RiskLevel = 'low' | 'medium' | 'high';
 
 export interface HealthStatus {
   riskLevel: RiskLevel;
-  riskPercentage: number;
+  wellnessIndex: number;
   riskText: string;
 }
 

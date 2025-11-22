@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Activity, MessageCircle, ClipboardList } from 'lucide-react-native';
+import { Activity, MessageCircle, ClipboardList, User } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -25,8 +25,15 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Dashboard',
+          title: 'Home',
           tabBarIcon: ({ size, color }) => <Activity size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="dashboard"
+        options={{
+          title: 'Profilo',
+          tabBarIcon: ({ size, color }) => <User size={size} color={color} />,
         }}
       />
       <Tabs.Screen
