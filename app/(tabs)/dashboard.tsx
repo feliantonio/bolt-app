@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -11,6 +11,7 @@ import {
     ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Profile, INITIAL_PROFILE } from '@/types/profile';
 import { loadProfile, updateProfile, confirmProfile, getProfileStatus } from '@/services/profileService';
 import { User, Edit2, CheckCircle, AlertTriangle } from 'lucide-react-native';
@@ -25,6 +26,12 @@ export default function DashboardScreen() {
         fetchProfile();
     }, []);
 
+    useFocusEffect(
+        useCallback(() => {
+            fetchProfile();
+        }, [])
+    );
+
     const fetchProfile = async () => {
         setLoading(true);
         const data = await loadProfile();
@@ -38,17 +45,33 @@ export default function DashboardScreen() {
     };
 
     const handleSave = async () => {
-        if (!editForm.age || !editForm.sex || !editForm.location) {
-            Alert.alert('Errore', 'Età, Sesso e Località sono obbligatori.');
+        const ageNum = typeof editForm.age === 'string' ? parseInt(editForm.age, 10) : editForm.age;
+        if (!ageNum || Number.isNaN(ageNum)) {
+            Alert.alert('Errore', 'Età è obbligatoria e deve essere un numero valido.');
+            return;
+        }
+        if (!editForm.sex) {
+            Alert.alert('Errore', 'Sesso è obbligatorio.');
+            return;
+        }
+        const location = editForm.location?.trim();
+        if (!location) {
+            Alert.alert('Errore', 'Località è obbligatoria.');
             return;
         }
 
-        // Ensure numeric age
-        const ageNum = typeof editForm.age === 'string' ? parseInt(editForm.age, 10) : editForm.age;
+        const bmiValue = editForm.lifestyle?.bmi;
+        const bmiNum = typeof bmiValue === 'string' ? parseFloat(bmiValue) : bmiValue;
 
         const updated = await updateProfile({
             ...editForm,
             age: ageNum,
+            location,
+            lifestyle: {
+                ...profile.lifestyle,
+                ...(editForm.lifestyle || {}),
+                bmi: bmiNum !== undefined && bmiNum !== null && !Number.isNaN(bmiNum) ? bmiNum : null,
+            },
         });
         setProfile(updated);
         setEditModalVisible(false);
@@ -134,6 +157,7 @@ export default function DashboardScreen() {
                         <InfoRow label="Storia Familiare" value={profile.familyHistory || '-'} />
                         <InfoRow label="Storia Medica" value={profile.medicalHistory || '-'} />
                         <InfoRow label="Esposizioni" value={profile.exposures || '-'} />
+                        <InfoRow label="Obiettivi" value={profile.goals || '-'} />
                     </View>
                 </View>
             </ScrollView>
@@ -151,8 +175,11 @@ export default function DashboardScreen() {
                         <Text style={styles.label}>Età *</Text>
                         <TextInput
                             style={styles.input}
-                            value={editForm.age?.toString()}
-                            onChangeText={(t) => setEditForm({ ...editForm, age: parseInt(t) || 0 })}
+                            value={editForm.age !== null && editForm.age !== undefined ? editForm.age.toString() : ''}
+                            onChangeText={(t) => {
+                                const num = t === '' ? null : parseInt(t, 10);
+                                setEditForm({ ...editForm, age: Number.isNaN(num) ? null : num });
+                            }}
                             keyboardType="numeric"
                             placeholder="Es. 45"
                         />
@@ -187,6 +214,70 @@ export default function DashboardScreen() {
                             style={styles.input}
                             value={editForm.lifestyle?.alcohol || ''}
                             onChangeText={(t) => setEditForm({ ...editForm, lifestyle: { ...(editForm.lifestyle || profile.lifestyle), alcohol: t as any } })}
+                        />
+
+                        <Text style={styles.label}>Attività Fisica (low/medium/high)</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={editForm.lifestyle?.physicalActivity || ''}
+                            onChangeText={(t) => setEditForm({ ...editForm, lifestyle: { ...(editForm.lifestyle || profile.lifestyle), physicalActivity: t as any } })}
+                        />
+
+                        <Text style={styles.label}>Qualità Dieta (poor/average/good)</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={editForm.lifestyle?.dietQuality || ''}
+                            onChangeText={(t) => setEditForm({ ...editForm, lifestyle: { ...(editForm.lifestyle || profile.lifestyle), dietQuality: t as any } })}
+                        />
+
+                        <Text style={styles.label}>BMI</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={editForm.lifestyle?.bmi !== null && editForm.lifestyle?.bmi !== undefined ? editForm.lifestyle?.bmi.toString() : ''}
+                            onChangeText={(t) => {
+                                const num = t === '' ? null : parseFloat(t);
+                                setEditForm({
+                                    ...editForm,
+                                    lifestyle: { ...(editForm.lifestyle || profile.lifestyle), bmi: Number.isNaN(num) ? null : num }
+                                });
+                            }}
+                            keyboardType="numeric"
+                            placeholder="Es. 22.5"
+                        />
+
+                        <Text style={styles.sectionLabel}>Anamnesi e Note</Text>
+
+                        <Text style={styles.label}>Storia Familiare</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={editForm.familyHistory || ''}
+                            onChangeText={(t) => setEditForm({ ...editForm, familyHistory: t })}
+                            placeholder="Es. tumori in famiglia"
+                        />
+
+                        <Text style={styles.label}>Storia Medica</Text>
+                        <TextInput
+                            style={[styles.input, styles.multiline]}
+                            value={editForm.medicalHistory || ''}
+                            onChangeText={(t) => setEditForm({ ...editForm, medicalHistory: t })}
+                            placeholder="Patologie, terapie in corso..."
+                            multiline
+                        />
+
+                        <Text style={styles.label}>Esposizioni</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={editForm.exposures || ''}
+                            onChangeText={(t) => setEditForm({ ...editForm, exposures: t })}
+                            placeholder="Fumo passivo, amianto, radiazioni..."
+                        />
+
+                        <Text style={styles.label}>Obiettivi</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={editForm.goals || ''}
+                            onChangeText={(t) => setEditForm({ ...editForm, goals: t })}
+                            placeholder="Cosa vuoi migliorare?"
                         />
 
                         <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
@@ -235,6 +326,7 @@ const styles = StyleSheet.create({
     label: { fontSize: 14, color: '#666', marginBottom: 4, marginTop: 12 },
     sectionLabel: { fontSize: 16, fontWeight: '600', marginTop: 20, marginBottom: 8 },
     input: { backgroundColor: '#fff', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E5E5EA' },
+    multiline: { minHeight: 80, textAlignVertical: 'top' },
     saveButton: { backgroundColor: '#34C759', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 32 },
     saveButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
 });

@@ -17,12 +17,14 @@ import { runOncoTeam } from '@/services/onco/orchestrator';
 
 
 
+const POLICY_DISCLAIMER = 'Disclaimer: questo assistente non è un dispositivo medico, non fornisce diagnosi né sostituisce il parere di un medico. In caso di dubbi o urgenze contatta subito il tuo medico o il 112.';
+
 export default function ChatbotScreen() {
   const [messages, setMessages] = useState<Message[]>([
     {
-      id: '1',
+      id: 'policy',
       sender: 'ai',
-      text: 'Ciao! Sono il tuo assistente Onco-Team. Come posso aiutarti oggi?',
+      text: POLICY_DISCLAIMER,
       timestamp: new Date(),
     },
   ]);
@@ -33,10 +35,9 @@ export default function ChatbotScreen() {
   // Initial Profile Check
   useEffect(() => {
     const initChat = async () => {
-      // Send a hidden system message to trigger the profile check logic in the orchestrator
-      const response = await runOncoTeam('user-123', '__PROFILE_CHECK__');
+      // Show profile summary right after disclaimer
+      const response = await runOncoTeam('user-123', '__PROFILE_SUMMARY__');
 
-      // If the response is not empty (meaning the orchestrator intercepted it), show it
       if (response.text) {
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
@@ -87,29 +88,30 @@ export default function ChatbotScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Assistente Onco-Team</Text>
-        <View style={{
-          width: 12,
-          height: 12,
-          borderRadius: 6,
-          backgroundColor: trafficLight === 'RED' ? '#FF3B30' : trafficLight === 'YELLOW' ? '#FFCC00' : trafficLight === 'GREEN' ? '#34C759' : '#C7C7CC',
-          marginLeft: 8
-        }} />
-      </View>
+    <KeyboardAvoidingView
+      style={styles.keyboardView}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+    >
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Assistente Onco-Team</Text>
+          <View style={{
+            width: 12,
+            height: 12,
+            borderRadius: 6,
+            backgroundColor: trafficLight === 'RED' ? '#FF3B30' : trafficLight === 'YELLOW' ? '#FFCC00' : trafficLight === 'GREEN' ? '#34C759' : '#C7C7CC',
+            marginLeft: 8
+          }} />
+        </View>
 
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={100}
-      >
         <FlatList
           ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <ChatMessage message={item} />}
           contentContainerStyle={styles.messagesList}
+          keyboardShouldPersistTaps="handled"
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
         />
 
@@ -131,8 +133,8 @@ export default function ChatbotScreen() {
             <Send size={20} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -167,12 +169,14 @@ const styles = StyleSheet.create({
   },
   messagesList: {
     paddingVertical: 16,
+    paddingHorizontal: 12,
+    flexGrow: 1,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#E5E5EA',

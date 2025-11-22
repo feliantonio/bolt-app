@@ -6,7 +6,15 @@ const PROFILE_KEY = 'user_profile_v1';
 export const loadProfile = async (): Promise<Profile> => {
     try {
         const jsonValue = await AsyncStorage.getItem(PROFILE_KEY);
-        return jsonValue != null ? JSON.parse(jsonValue) : INITIAL_PROFILE;
+        const stored = jsonValue != null ? JSON.parse(jsonValue) : {};
+        return {
+            ...INITIAL_PROFILE,
+            ...stored,
+            lifestyle: {
+                ...INITIAL_PROFILE.lifestyle,
+                ...(stored.lifestyle || {}),
+            },
+        };
     } catch (e) {
         console.error('Failed to load profile', e);
         return INITIAL_PROFILE;
@@ -27,12 +35,46 @@ export const saveProfile = async (profile: Profile): Promise<void> => {
 
 export const updateProfile = async (partialProfile: Partial<Profile>): Promise<Profile> => {
     const current = await loadProfile();
+    // Accept both nested lifestyle object and flat fields for lifestyle keys
+    const flatLifestyleKeys = ['smoking', 'alcohol', 'physicalActivity', 'dietQuality', 'bmi'] as const;
+    const lifestyleFromFlat: Partial<Profile['lifestyle']> = {};
+    flatLifestyleKeys.forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(partialProfile, key)) {
+            // @ts-expect-error dynamic assign
+            lifestyleFromFlat[key] = (partialProfile as any)[key];
+        }
+    });
+
+    const mergedLifestyle = {
+        ...current.lifestyle,
+        ...lifestyleFromFlat,
+        ...(partialProfile.lifestyle || {}),
+    };
+
+    const rawAge = partialProfile.age !== undefined ? partialProfile.age : current.age;
+    const normalizedAge = typeof rawAge === 'string' ? parseInt(rawAge, 10) : rawAge;
+
+    const rawBmi = mergedLifestyle.bmi;
+    const normalizedBmi =
+        rawBmi === '' || rawBmi === null || rawBmi === undefined
+            ? null
+            : typeof rawBmi === 'string'
+                ? (() => {
+                    const num = parseFloat(rawBmi);
+                    return Number.isNaN(num) ? current.lifestyle.bmi : num;
+                })()
+                : rawBmi;
+
     const updated = {
         ...current,
         ...partialProfile,
+        age: Number.isNaN(normalizedAge as any) ? current.age : normalizedAge,
+        location: partialProfile.location !== undefined && partialProfile.location !== null
+            ? partialProfile.location.trim()
+            : current.location,
         lifestyle: {
-            ...current.lifestyle,
-            ...(partialProfile.lifestyle || {}),
+            ...mergedLifestyle,
+            bmi: normalizedBmi,
         },
         updatedAt: new Date().toISOString(),
     };

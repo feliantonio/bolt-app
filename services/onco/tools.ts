@@ -1,5 +1,5 @@
 import { ToolRequest } from '@/types/oncoAgent';
-import { updateProfile } from '../profileService';
+import { updateProfile, confirmProfile } from '../profileService';
 
 export const mockTools: Record<string, (params: any) => Promise<any>> = {
     wearable_api: async (params: any) => {
@@ -32,12 +32,38 @@ export const mockTools: Record<string, (params: any) => Promise<any>> = {
         };
     },
 
+    calendar_api: async (params: any) => {
+        // Minimal stub to avoid missing tool errors; returns a mock booking suggestion.
+        const title = params.title || 'Promemoria visita';
+        const date = params.date || new Date().toISOString().slice(0, 10);
+        const time = params.time || '09:00';
+        return {
+            success: true,
+            event: {
+                title,
+                date,
+                time,
+                location: params.location || 'Da definire',
+                notes: params.notes || 'Appuntamento generato automaticamente'
+            }
+        };
+    },
+
     update_profile: async (params: any) => {
         try {
             const updated = await updateProfile(params);
             return { success: true, profile: updated };
         } catch (error) {
             return { error: 'Failed to update profile' };
+        }
+    },
+
+    confirm_profile: async () => {
+        try {
+            const confirmed = await confirmProfile();
+            return { success: true, profile: confirmed };
+        } catch (error) {
+            return { error: 'Failed to confirm profile' };
         }
     }
 };

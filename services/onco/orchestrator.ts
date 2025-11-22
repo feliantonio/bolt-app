@@ -12,6 +12,37 @@ const openai = new OpenAI({
     dangerouslyAllowBrowser: true,
 });
 
+function formatValue(val: any) {
+    if (val === null || val === undefined || val === '') return '-';
+    return val.toString();
+}
+
+function formatProfileSummary(profile: any, status: string) {
+    const lines = [
+        `- Età: ${formatValue(profile.age)}`,
+        `- Sesso: ${formatValue(profile.sex)}`,
+        `- Località: ${formatValue(profile.location)}`,
+        `- Fumo: ${formatValue(profile.lifestyle?.smoking)}`,
+        `- Alcol: ${formatValue(profile.lifestyle?.alcohol)}`,
+        `- Attività: ${formatValue(profile.lifestyle?.physicalActivity)}`,
+        `- Dieta: ${formatValue(profile.lifestyle?.dietQuality)}`,
+        `- BMI: ${formatValue(profile.lifestyle?.bmi)}`,
+        `- Famiglia: ${formatValue(profile.familyHistory)}`,
+        `- Storia medica: ${formatValue(profile.medicalHistory)}`,
+        `- Esposizioni: ${formatValue(profile.exposures)}`,
+        `- Obiettivi: ${formatValue(profile.goals)}`
+    ];
+
+    const statusMsg =
+        status === 'MISSING'
+            ? 'Mancano dati obbligatori (età, sesso, località). Inseriscili per procedere.'
+            : status === 'NEEDS_CONFIRMATION'
+                ? 'Profilo da confermare: controlla i dati e conferma o modifica.'
+                : 'Profilo confermato.';
+
+    return `Ecco il riepilogo del tuo profilo:\n${lines.join('\n')}\n\n${statusMsg}\nVuoi modificare qualcosa? Se no, dimmi come posso aiutarti.`;
+}
+
 async function callAgent(
     role: AgentRole,
     systemPrompt: string,
@@ -59,9 +90,20 @@ export async function runOncoTeam(
     userMessage: string,
     history: any[] = []
 ): Promise<OncoTeamResponse> {
+    // Shortcut: return a local profile summary without hitting the LLM
+    if (userMessage === '__PROFILE_SUMMARY__') {
+        const profile = await loadProfile();
+        const profileStatus = getProfileStatus(profile);
+        return {
+            text: formatProfileSummary(profile, profileStatus),
+            traffic_light: 'UNKNOWN',
+            debug_info: { profileStatus, profile }
+        };
+    }
+
     // 1. Load Profile and Check Status
-    const profile = await loadProfile();
-    const profileStatus = getProfileStatus(profile);
+    let profile = await loadProfile();
+    let profileStatus = getProfileStatus(profile);
 
     console.log('--- Starting OncoTeam Run ---');
     console.log('Profile Status:', profileStatus);
@@ -71,10 +113,13 @@ export async function runOncoTeam(
     const maxLoops = 5;
 
     // Context to pass between agents in this run
-    const runContext: any[] = [
-        ...history,
-        { role: 'system', content: `User Profile Status: ${profileStatus}. Profile Data: ${JSON.stringify(profile)}` }
-    ];
+    const runContext: any[] = [...history];
+    const pushProfileContext = () => {
+        const ctx = { role: 'system', content: `User Profile Status: ${profileStatus}. Profile Data: ${JSON.stringify(profile)}` };
+        runContext.push(ctx);
+        return ctx;
+    };
+    pushProfileContext();
     let lastAgentResponse: AgentMessage | null = null;
     let currentInput = userMessage;
 
@@ -83,12 +128,13 @@ export async function runOncoTeam(
     // and force the Companion to focus on onboarding/confirmation.
     // We only do this interception if the currentInput is the initial user message.
     if (profileStatus !== 'CONFIRMED' && currentInput === userMessage) {
+        const userIntent = userMessage && typeof userMessage === 'string' ? ` USER_MESSAGE: ${userMessage}` : '';
         if (profileStatus === 'MISSING') {
             // Inject system instruction to start onboarding
-            currentInput = "SYSTEM_INSTRUCTION: The user profile is MISSING. Start the onboarding process by asking for Age, Sex, and Location. Do not answer other questions.";
+            currentInput = `SYSTEM_INSTRUCTION: The user profile is MISSING. Start the onboarding process by asking for Age, Sex, and Location. Do not answer other questions.${userIntent}`;
         } else if (profileStatus === 'NEEDS_CONFIRMATION') {
             // Inject system instruction to ask for confirmation
-            currentInput = "SYSTEM_INSTRUCTION: The user profile NEEDS_CONFIRMATION. Show the summary of what you know and ask the user to confirm or edit. Do not answer other questions until confirmed.";
+            currentInput = `SYSTEM_INSTRUCTION: The user profile NEEDS_CONFIRMATION. Show the summary of what you know and ask the user to confirm or edit. Do not answer other questions until confirmed.${userIntent}`;
         }
         // Force Companion
         currentAgent = 'COMPANION';
@@ -114,12 +160,29 @@ export async function runOncoTeam(
             const toolResult = await executeTool(response.tool_request);
             // Add tool result to context for the next iteration (likely same agent or next)
             runContext.push({ from: 'TOOL', content: toolResult });
-            // We might want to re-call the same agent with the tool result, 
-            // but for simplicity in this loop, we let the handoff logic decide or re-prompt.
-            // If the agent requested a tool, it usually expects the result. 
-            // Let's assume the agent handles the flow via handoff or we re-call.
-            // For this MVP, if tool is used, we treat it as input for the next step.
-            currentInput = `Tool Result: ${JSON.stringify(toolResult)}`;
+            if (['update_profile', 'confirm_profile'].includes(response.tool_request.tool_name)) {
+                // Refresh profile context so the agent sees the updated status/data immediately
+                profile = await loadProfile();
+                profileStatus = getProfileStatus(profile);
+                pushProfileContext();
+                // If the tool failed, bubble a clear error
+                if (toolResult?.error) {
+                    return {
+                        text: 'Errore nel salvataggio del profilo. Riprova o modifica i dati dalla sezione Profilo.',
+                        traffic_light: 'UNKNOWN',
+                        debug_info: runContext
+                    };
+                }
+                // Return deterministic summary to the UI to avoid LLM formatting issues
+                const summary = formatProfileSummary(profile, profileStatus);
+                return {
+                    text: summary,
+                    traffic_light: 'UNKNOWN',
+                    debug_info: runContext
+                };
+            } else {
+                currentInput = `Tool Result: ${JSON.stringify(toolResult)}`;
+            }
         } else {
             currentInput = `Previous agent output: ${JSON.stringify(response)}`;
         }
@@ -145,7 +208,15 @@ export async function runOncoTeam(
     }
 
     // Final response construction
-    const finalMessage = lastAgentResponse?.messages_for_user?.[0] || 'Non ho capito, puoi ripetere?';
+    const messages = lastAgentResponse?.messages_for_user || [];
+    const questions = lastAgentResponse?.questions_for_user || [];
+    const steps = lastAgentResponse?.next_steps || [];
+    const chunks = [
+        ...messages,
+        ...questions,
+        ...(steps.length > 0 ? [`Ecco cosa puoi fare:\n- ${steps.join('\n- ')}`] : [])
+    ].filter(Boolean);
+    const finalMessage = chunks.length > 0 ? chunks.join('\n\n') : 'Non ho capito, puoi ripetere?';
     const trafficLight = lastAgentResponse?.traffic_light || 'UNKNOWN';
 
     return {

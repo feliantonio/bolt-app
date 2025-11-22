@@ -20,7 +20,7 @@ export interface Recommendations {
 }
 
 export interface ToolRequest {
-    tool_name: string;
+    tool_name: 'wearable_api' | 'federated_model' | 'cup_api' | 'calendar_api' | 'update_profile' | 'confirm_profile' | 'none';
     params: any;
 }
 
